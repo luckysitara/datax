@@ -1,6 +1,6 @@
 import { Suspense } from "react"
 import Link from "next/link"
-import { ArrowRight, LineChart, PieChart, Wallet, Activity, Layers } from "lucide-react"
+import { ArrowRight, LineChart, PieChart, Activity, Layers } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
@@ -12,6 +12,7 @@ import { TrainModelButton } from "@/components/train-model-button"
 import { NetworkStats } from "@/components/network-stats"
 import { RecentTransactions } from "@/components/recent-transactions"
 import { RecentBlocks } from "@/components/recent-blocks"
+import { ConnectWalletButton } from "@/components/connect-wallet-button"
 
 export default function HomePage() {
   return (
@@ -31,10 +32,7 @@ export default function HomePage() {
               <ArrowRight className="ml-2 h-4 w-4" />
             </Link>
           </Button>
-          <Button>
-            <Wallet className="mr-2 h-4 w-4" />
-            Connect Wallet
-          </Button>
+          <ConnectWalletButton />
         </div>
       </div>
 
@@ -64,7 +62,7 @@ export default function HomePage() {
           </CardContent>
           <CardFooter>
             <Button variant="outline" size="sm" asChild className="ml-auto">
-              <Link href="/analytics/rewards">
+              <Link href="/analytics">
                 View Detailed Analysis
                 <ArrowRight className="ml-2 h-3 w-3" />
               </Link>
@@ -86,7 +84,7 @@ export default function HomePage() {
           </CardContent>
           <CardFooter>
             <Button variant="outline" size="sm" asChild className="ml-auto">
-              <Link href="/analytics/stake">
+              <Link href="/analytics">
                 View Detailed Analysis
                 <ArrowRight className="ml-2 h-3 w-3" />
               </Link>

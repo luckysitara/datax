@@ -12,38 +12,14 @@ export async function GET(request: Request) {
       limit * 2, // Fetch more than we need in case some fail
     )
 
-    if (!signaturesResult.success || !Array.isArray(signaturesResult.data)) {
-      // Generate realistic transaction data if we can't get real data
-      const slotResult = await solanaRpc.getCurrentSlot()
-      const currentSlot = slotResult.success ? slotResult.data : Math.floor(Date.now() / 400)
-
-      const transactions = Array.from({ length: limit }, (_, i) => {
-        const signature = Buffer.from(Math.random().toString()).toString("hex").slice(0, 64)
-        const slot = currentSlot - Math.floor(Math.random() * 100)
-        const blockTime = Math.floor(Date.now() / 1000) - Math.floor(Math.random() * 3600)
-
-        return {
-          signature,
-          slot,
-          blockTime,
-          fee: null,
-          status: Math.random() > 0.1 ? "Success" : "Failed", // 90% success rate
-          instructions: null,
-          instructionType: "Unknown",
-        }
-      })
-
-      return NextResponse.json({
-        success: true,
-        data: transactions,
-        generated: true,
-      })
+    if (!signaturesResult.success) {
+      throw new Error(`Failed to fetch signatures: ${signaturesResult.error}`)
     }
 
     const signatures = signaturesResult.data
 
     // Process signatures to extract basic transaction info
-    const transactions = signatures.slice(0, limit).map((sig) => {
+    const transactions = signatures.slice(0, limit).map((sig: any) => {
       return {
         signature: sig.signature,
         slot: sig.slot,

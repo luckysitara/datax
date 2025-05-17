@@ -20,7 +20,7 @@ interface NetworkData {
     recentBlockhash: string | null
     blockTime: number | null
     version: string | null
-    transactionCount: number | null
+    transactionCount?: number | null
   }
   validators: {
     total: number | null
@@ -178,7 +178,7 @@ export function NetworkStats() {
               <div className="flex items-center justify-between text-xs">
                 <span className="text-muted-foreground">Transactions</span>
                 <span>
-                  {data.network.transactionCount !== null ? data.network.transactionCount.toLocaleString() : "N/A"}
+                  {data.network.transactionCount != null ? data.network.transactionCount.toLocaleString() : "N/A"}
                 </span>
               </div>
             </div>

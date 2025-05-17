@@ -9,6 +9,7 @@ import { BarChart3, Home, Settings, Users, Activity, Layers, Shield, HelpCircle 
 export function MainNav() {
   const pathname = usePathname()
 
+  // Define all available routes to ensure they exist
   const routes = [
     {
       href: "/",

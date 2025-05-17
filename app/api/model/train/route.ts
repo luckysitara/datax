@@ -39,23 +39,13 @@ export async function POST() {
     console.log(`Training model with ${validValidators.length} validators...`)
 
     // Get current epoch
-    let epochInfo = null
-    try {
-      const { data, error: epochError } = await supabase
-        .from("epoch_info")
-        .select("epoch")
-        .order("epoch", { ascending: false })
-        .limit(1)
-        .single()
-
-      if (epochError) {
-        console.error("Error fetching epoch info:", epochError)
-      } else {
-        epochInfo = data
-      }
-    } catch (err) {
-      console.error("Exception fetching epoch info:", err)
-    }
+    const { data: epochInfo, error: epochError } = await supabase
+      .from("epoch_info")
+      .select("epoch")
+      .order("epoch", { ascending: false })
+      .limit(1)
+      .single()
+      .catch(() => ({ data: null, error: null }))
 
     const currentEpoch = epochInfo?.epoch || Math.floor(Date.now() / (2 * 24 * 60 * 60 * 1000))
     const nextEpoch = currentEpoch + 1

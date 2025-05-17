@@ -1,32 +1,32 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useState, useEffect } from "react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Button } from "@/components/ui/button"
-import { RefreshCw } from "lucide-react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { AlertCircle } from "lucide-react"
+import { AlertCircle, RefreshCw } from "lucide-react"
+import { Button } from "@/components/ui/button"
 
 interface Block {
   slot: number
+  blockhash: string
+  parentSlot: number
   blockTime: number
   blockHeight: number | null
   validator: string
-  transactions: number | null
-  totalFees: number | null
 }
 
-export function RecentBlocks() {
+export function RecentBlocks({ limit = 5 }: { limit?: number }) {
   const [blocks, setBlocks] = useState<Block[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
 
   const fetchBlocks = async () => {
     try {
       setIsRefreshing(true)
-      const response = await fetch("/api/blocks?limit=10")
+      const response = await fetch(`/api/blocks?limit=${limit}`)
 
       if (!response.ok) {
         throw new Error(`Failed to fetch blocks: ${response.statusText}`)
@@ -40,6 +40,7 @@ export function RecentBlocks() {
 
       setBlocks(result.data)
       setError(null)
+      setLastUpdated(new Date())
     } catch (err) {
       console.error("Error fetching blocks:", err)
       setError(err instanceof Error ? err : new Error("Unknown error"))
@@ -52,28 +53,56 @@ export function RecentBlocks() {
   useEffect(() => {
     fetchBlocks()
 
-    // Refresh data every 2 minutes to reduce API calls
-    const intervalId = setInterval(fetchBlocks, 120000)
+    // Refresh data every 10 minutes
+    const intervalId = setInterval(fetchBlocks, 10 * 60 * 1000)
 
     return () => clearInterval(intervalId)
-  }, [])
+  }, [limit])
 
   if (isLoading) {
     return (
       <div className="space-y-4">
-        <div className="flex justify-between items-center">
-          <h3 className="text-lg font-medium">Recent Blocks</h3>
-        </div>
-        <Skeleton className="h-[300px] w-full" />
+        <Skeleton className="h-8 w-full" />
+        <Skeleton className="h-8 w-full" />
+        <Skeleton className="h-8 w-full" />
+        <Skeleton className="h-8 w-full" />
+        <Skeleton className="h-8 w-full" />
       </div>
     )
   }
 
-  return (
-    <div className="space-y-4">
-      <div className="flex justify-between items-center">
-        <h3 className="text-lg font-medium">Recent Blocks</h3>
-        <Button variant="outline" size="sm" onClick={fetchBlocks} disabled={isRefreshing}>
+  if (error) {
+    return (
+      <Alert variant="destructive">
+        <AlertCircle className="h-4 w-4" />
+        <AlertTitle>Error</AlertTitle>
+        <AlertDescription>
+          Failed to load blocks: {error.message}
+          <div className="mt-2">
+            <Button variant="outline" size="sm" onClick={fetchBlocks} disabled={isRefreshing}>
+              {isRefreshing ? (
+                <>
+                  <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                  Retrying...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Retry
+                </>
+              )}
+            </Button>
+          </div>
+        </AlertDescription>
+      </Alert>
+    )
+  }
+
+  if (blocks.length === 0) {
+    return (
+      <div className="text-center py-8">
+        <p className="text-muted-foreground">No blocks found.</p>
+        <Button variant="outline" size="sm" onClick={fetchBlocks} className="mt-4" disabled={isRefreshing}>
           {isRefreshing ? (
             <>
               <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
@@ -87,72 +116,56 @@ export function RecentBlocks() {
           )}
         </Button>
       </div>
+    )
+  }
 
-      {error && (
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertTitle>Error</AlertTitle>
-          <AlertDescription>Failed to fetch recent blocks: {error.message}. Please try again later.</AlertDescription>
-        </Alert>
-      )}
-
-      {blocks.length === 0 && !error ? (
-        <div className="text-center py-8">
-          <p className="text-muted-foreground">No block data available. Please try refreshing.</p>
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-between items-center">
+        <div>
+          <span className="text-sm text-muted-foreground">Showing {blocks.length} blocks</span>
         </div>
-      ) : (
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Slot</TableHead>
-                <TableHead>Time</TableHead>
-                <TableHead>Age</TableHead>
-                <TableHead>Validator</TableHead>
-                <TableHead>Transactions</TableHead>
-                <TableHead>Fees (SOL)</TableHead>
+        <div className="flex items-center gap-2">
+          {lastUpdated && (
+            <span className="text-xs text-muted-foreground">Last updated: {lastUpdated.toLocaleTimeString()}</span>
+          )}
+          <Button variant="outline" size="sm" onClick={fetchBlocks} disabled={isRefreshing}>
+            {isRefreshing ? (
+              <>
+                <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                Refreshing...
+              </>
+            ) : (
+              <>
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Refresh
+              </>
+            )}
+          </Button>
+        </div>
+      </div>
+      <div className="rounded-md border">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Slot</TableHead>
+              <TableHead>Block Time</TableHead>
+              <TableHead>Validator</TableHead>
+              <TableHead>Block Hash</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {blocks.map((block) => (
+              <TableRow key={block.slot}>
+                <TableCell className="font-medium">{block.slot}</TableCell>
+                <TableCell>{block.blockTime ? new Date(block.blockTime * 1000).toLocaleString() : "N/A"}</TableCell>
+                <TableCell>{block.validator}</TableCell>
+                <TableCell className="font-mono text-xs truncate max-w-[200px]">{block.blockhash}</TableCell>
               </TableRow>
-            </TableHeader>
-            <TableBody>
-              {blocks.map((block) => {
-                // Format time ago
-                const now = Math.floor(Date.now() / 1000)
-                const secondsAgo = now - block.blockTime
-                const timeAgo =
-                  secondsAgo < 60
-                    ? `${secondsAgo}s ago`
-                    : secondsAgo < 3600
-                      ? `${Math.floor(secondsAgo / 60)}m ago`
-                      : `${Math.floor(secondsAgo / 3600)}h ago`
-
-                // Format date/time
-                const date = new Date(block.blockTime * 1000)
-                const formattedTime = date.toLocaleTimeString()
-
-                return (
-                  <TableRow key={block.slot}>
-                    <TableCell>
-                      <a
-                        href={`https://explorer.solana.com/block/${block.slot}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="hover:underline text-blue-600"
-                      >
-                        {block.slot.toLocaleString()}
-                      </a>
-                    </TableCell>
-                    <TableCell>{formattedTime}</TableCell>
-                    <TableCell>{timeAgo}</TableCell>
-                    <TableCell>{block.validator || "Unknown"}</TableCell>
-                    <TableCell>{block.transactions?.toLocaleString() || "N/A"}</TableCell>
-                    <TableCell>{block.totalFees?.toFixed(6) || "N/A"}</TableCell>
-                  </TableRow>
-                )
-              })}
-            </TableBody>
-          </Table>
-        </div>
-      )}
+            ))}
+          </TableBody>
+        </Table>
+      </div>
     </div>
   )
 }
