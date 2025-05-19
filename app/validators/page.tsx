@@ -1,6 +1,6 @@
 import { Suspense } from "react"
-import { ArrowLeft, Filter, Search, SlidersHorizontal } from "lucide-react"
 import Link from "next/link"
+import { ArrowLeft, Filter, Search, SlidersHorizontal } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -85,7 +85,7 @@ export default function ValidatorsPage() {
                 </CardHeader>
                 <CardContent>
                   <Suspense fallback={<Skeleton className="h-[500px] w-full" />}>
-                    <ValidatorTable filter="top" />
+                    <ValidatorTable filter="top_performance" />
                   </Suspense>
                 </CardContent>
               </Card>
@@ -98,7 +98,7 @@ export default function ValidatorsPage() {
                 </CardHeader>
                 <CardContent>
                   <Suspense fallback={<Skeleton className="h-[500px] w-full" />}>
-                    <ValidatorTable filter="recommended" />
+                    <ValidatorTable filter="low_risk" />
                   </Suspense>
                 </CardContent>
               </Card>

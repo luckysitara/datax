@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { fetchAllValidatorData, storeValidatorData } from "@/utils/fetch-solana-validators"
+import { fetchAndStoreValidatorData } from "@/utils/fetch-validators"
 
 export const maxDuration = 300 // 5 minutes max duration for this API route
 
@@ -7,18 +7,18 @@ export async function POST() {
   try {
     console.log("Starting validator data fetch...")
 
-    // Fetch validator data from Solana
-    const data = await fetchAllValidatorData()
-    console.log(`Fetched ${data.totalValidators} validators for epoch ${data.epoch}`)
+    // Fetch and store validator data
+    const result = await fetchAndStoreValidatorData()
 
-    // Store data in Supabase
-    const result = await storeValidatorData(data)
+    if (!result.success) {
+      throw new Error(result.error || "Failed to fetch validator data")
+    }
 
     return NextResponse.json({
       success: true,
-      message: `Successfully fetched and stored ${result.count} validators`,
-      totalValidators: data.totalValidators,
-      epoch: data.epoch,
+      message: `Successfully fetched and stored ${result.storedValidators} validators`,
+      totalValidators: result.totalValidators,
+      epoch: result.epoch,
     })
   } catch (error) {
     console.error("Error fetching validator data:", error)

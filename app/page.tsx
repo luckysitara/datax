@@ -1,143 +1,101 @@
-import { Suspense } from "react"
-import Link from "next/link"
-import { ArrowRight, LineChart, PieChart, Activity, Layers } from "lucide-react"
-
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { Skeleton } from "@/components/ui/skeleton"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { NetworkStats } from "@/components/network-stats"
 import { ValidatorStats } from "@/components/validator-stats"
+import { RecentBlocks } from "@/components/recent-blocks"
+import { RecentTransactions } from "@/components/recent-transactions"
+import { TopValidators } from "@/components/top-validators"
 import { RewardTrend } from "@/components/reward-trend"
 import { StakeDistribution } from "@/components/stake-distribution"
-import { TrainModelButton } from "@/components/train-model-button"
-import { NetworkStats } from "@/components/network-stats"
-import { RecentTransactions } from "@/components/recent-transactions"
-import { RecentBlocks } from "@/components/recent-blocks"
-import { ConnectWalletButton } from "@/components/connect-wallet-button"
 
-export default function HomePage() {
+export const metadata = {
+  title: "Solana Validator Dashboard",
+  description: "Analytics dashboard for Solana validators",
+}
+
+export default function DashboardPage() {
   return (
-    <div className="flex-1 space-y-6 p-6 md:p-8">
-      <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight md:text-3xl">Validator Performance & Reward Analyzer</h1>
-          <p className="text-muted-foreground">
-            Make informed staking decisions with real-time validator analytics and predictions
-          </p>
+    <div className="flex flex-col">
+      <div className="flex-1 space-y-4 p-8 pt-6">
+        <div className="flex items-center justify-between space-y-2">
+          <h2 className="text-3xl font-bold tracking-tight">Dashboard</h2>
         </div>
-        <div className="flex items-center gap-2">
-          <TrainModelButton />
-          <Button asChild variant="outline">
-            <Link href="/validators">
-              View All Validators
-              <ArrowRight className="ml-2 h-4 w-4" />
-            </Link>
-          </Button>
-          <ConnectWalletButton />
-        </div>
-      </div>
-
-      <Suspense fallback={<Skeleton className="h-[120px] w-full" />}>
-        <NetworkStats />
-      </Suspense>
-
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Suspense fallback={<Skeleton className="h-[120px] w-full" />}>
-          <ValidatorStats />
-        </Suspense>
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
-        <Card className="col-span-4">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <div className="space-y-1">
-              <CardTitle>Reward Trends</CardTitle>
-              <CardDescription>Average validator rewards over time</CardDescription>
+        <Tabs defaultValue="overview" className="space-y-4">
+          <TabsList>
+            <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="analytics">Analytics</TabsTrigger>
+          </TabsList>
+          <TabsContent value="overview" className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+              <NetworkStats />
             </div>
-            <LineChart className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <Suspense fallback={<Skeleton className="h-[300px] w-full" />}>
-              <RewardTrend />
-            </Suspense>
-          </CardContent>
-          <CardFooter>
-            <Button variant="outline" size="sm" asChild className="ml-auto">
-              <Link href="/analytics">
-                View Detailed Analysis
-                <ArrowRight className="ml-2 h-3 w-3" />
-              </Link>
-            </Button>
-          </CardFooter>
-        </Card>
-        <Card className="col-span-3">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <div className="space-y-1">
-              <CardTitle>Stake Distribution</CardTitle>
-              <CardDescription>Current stake allocation across validators</CardDescription>
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+              <ValidatorStats />
             </div>
-            <PieChart className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <Suspense fallback={<Skeleton className="h-[300px] w-full" />}>
-              <StakeDistribution />
-            </Suspense>
-          </CardContent>
-          <CardFooter>
-            <Button variant="outline" size="sm" asChild className="ml-auto">
-              <Link href="/analytics">
-                View Detailed Analysis
-                <ArrowRight className="ml-2 h-3 w-3" />
-              </Link>
-            </Button>
-          </CardFooter>
-        </Card>
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-2">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <div className="space-y-1">
-              <CardTitle>Recent Transactions</CardTitle>
-              <CardDescription>Latest transactions on the Solana network</CardDescription>
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
+              <Card className="col-span-4">
+                <CardHeader>
+                  <CardTitle>Top Validators</CardTitle>
+                  <CardDescription>The highest performing validators on the network</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <TopValidators />
+                </CardContent>
+              </Card>
+              <Card className="col-span-3">
+                <CardHeader>
+                  <CardTitle>Recent Blocks</CardTitle>
+                  <CardDescription>The most recently produced blocks</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <RecentBlocks />
+                </CardContent>
+              </Card>
             </div>
-            <Activity className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <Suspense fallback={<Skeleton className="h-[300px] w-full" />}>
-              <RecentTransactions />
-            </Suspense>
-          </CardContent>
-          <CardFooter>
-            <Button variant="outline" size="sm" asChild className="ml-auto">
-              <Link href="/transactions">
-                View All Transactions
-                <ArrowRight className="ml-2 h-3 w-3" />
-              </Link>
-            </Button>
-          </CardFooter>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <div className="space-y-1">
-              <CardTitle>Recent Blocks</CardTitle>
-              <CardDescription>Latest blocks produced on the Solana network</CardDescription>
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
+              <Card className="col-span-3">
+                <CardHeader>
+                  <CardTitle>Recent Transactions</CardTitle>
+                  <CardDescription>The most recent transactions on the network</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <RecentTransactions />
+                </CardContent>
+              </Card>
+              <Card className="col-span-4">
+                <CardHeader>
+                  <CardTitle>Stake Distribution</CardTitle>
+                  <CardDescription>Distribution of stake across validators</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <StakeDistribution />
+                </CardContent>
+              </Card>
             </div>
-            <Layers className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <Suspense fallback={<Skeleton className="h-[300px] w-full" />}>
-              <RecentBlocks />
-            </Suspense>
-          </CardContent>
-          <CardFooter>
-            <Button variant="outline" size="sm" asChild className="ml-auto">
-              <Link href="/blocks">
-                View All Blocks
-                <ArrowRight className="ml-2 h-3 w-3" />
-              </Link>
-            </Button>
-          </CardFooter>
-        </Card>
+          </TabsContent>
+          <TabsContent value="analytics" className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
+              <Card className="col-span-4">
+                <CardHeader>
+                  <CardTitle>Reward Trend</CardTitle>
+                  <CardDescription>Historical APY and rewards over time</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <RewardTrend />
+                </CardContent>
+              </Card>
+              <Card className="col-span-3">
+                <CardHeader>
+                  <CardTitle>Stake Distribution</CardTitle>
+                  <CardDescription>Distribution of stake across validators</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <StakeDistribution />
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   )

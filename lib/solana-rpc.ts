@@ -1,469 +1,334 @@
-import axios, { type AxiosInstance } from "axios"
+import { Connection } from "@solana/web3.js"
+import { createServerSupabaseClient } from "./supabase"
 
-// Only use Helius and Solana public RPC as requested
-const RPC_ENDPOINTS = [
-  {
-    url: "https://mainnet.helius-rpc.com/?api-key=48be5c95-03f2-4385-8e01-144e3d77ef4a",
-    weight: 10,
-    name: "Helius",
-  },
-  {
-    url: "https://api.mainnet-beta.solana.com",
-    weight: 5,
-    name: "Solana Mainnet",
-  },
-]
-
-// Create axios instances for each endpoint with increased timeout
-const axiosInstances: Record<string, AxiosInstance> = {}
-RPC_ENDPOINTS.forEach((endpoint) => {
-  axiosInstances[endpoint.name] = axios.create({
-    baseURL: endpoint.url,
-    timeout: 60000, // Increase timeout to 60 seconds
-    headers: { "Content-Type": "application/json" },
-  })
-})
-
-// Cache for RPC responses with longer TTL
-const rpcCache: Record<string, { data: any; timestamp: number }> = {}
-const CACHE_TTL = 20 * 60 * 1000 // 20 minute cache to reduce API calls
-
-// Rate limiting control
-const endpointStatus: Record<
-  string,
-  {
-    lastRequestTime: number
-    consecutiveFailures: number
-    isRateLimited: boolean
-    rateLimitResetTime: number
-    backoffTime: number
-    requestsInWindow: number
-    windowStartTime: number
-  }
-> = {}
-
-// Initialize endpoint status
-RPC_ENDPOINTS.forEach((endpoint) => {
-  endpointStatus[endpoint.name] = {
-    lastRequestTime: 0,
-    consecutiveFailures: 0,
-    isRateLimited: false,
-    rateLimitResetTime: 0,
-    backoffTime: 1000, // Start with 1 second backoff
-    requestsInWindow: 0,
-    windowStartTime: Date.now(),
-  }
-})
-
-// Request queue to control flow
-interface QueuedRequest {
-  method: string
-  params: any[]
-  resolve: (value: any) => void
-  reject: (reason: any) => void
-  bypassCache: boolean
-  priority: number
-  timestamp: number
+// Cache durations in seconds
+const CACHE_DURATIONS = {
+  SHORT: 60, // 1 minute
+  MEDIUM: 300, // 5 minutes
+  LONG: 3600, // 1 hour
 }
 
-const requestQueue: QueuedRequest[] = []
-let isProcessingQueue = false
-
-// Constants for rate limiting
-const MIN_REQUEST_INTERVAL = 2000 // 2 seconds between requests to the same endpoint
-const MAX_BACKOFF_TIME = 300000 // 5 minutes maximum backoff
-const RATE_LIMIT_BACKOFF = 300000 // 5 minutes backoff when rate limited
-const MAX_REQUESTS_PER_WINDOW = 10 // Maximum requests per window
-const WINDOW_SIZE = 60000 // 1 minute window
-
-/**
- * Process the request queue
- */
-async function processQueue() {
-  if (isProcessingQueue || requestQueue.length === 0) return
-
-  isProcessingQueue = true
-
+// Initialize Solana connection
+export function getSolanaConnection() {
   try {
-    // Sort queue by priority (higher first) and then by timestamp (older first)
-    requestQueue.sort((a, b) => {
-      if (a.priority !== b.priority) return b.priority - a.priority
-      return a.timestamp - b.timestamp
+    const rpcUrl = process.env.SOLANA_RPC_URL
+    if (!rpcUrl) {
+      throw new Error("SOLANA_RPC_URL environment variable is not set")
+    }
+    return new Connection(rpcUrl, "confirmed")
+  } catch (error) {
+    console.error("Error creating Solana connection:", error)
+    throw error
+  }
+}
+
+// Helper function to cache RPC responses
+async function withCache<T>(
+  cacheKey: string,
+  fetchFn: () => Promise<T>,
+  duration: number = CACHE_DURATIONS.MEDIUM,
+): Promise<T> {
+  try {
+    const supabase = createServerSupabaseClient()
+
+    // Try to get from cache first
+    const { data: cachedData, error: cacheError } = await supabase
+      .from("rpc_cache")
+      .select("data, expires_at")
+      .eq("cache_key", cacheKey)
+      .single()
+
+    // If we have valid cached data, return it
+    if (!cacheError && cachedData && new Date(cachedData.expires_at) > new Date()) {
+      return cachedData.data as T
+    }
+
+    // Otherwise fetch fresh data
+    const result = await fetchFn()
+
+    // Store in cache
+    const expiresAt = new Date(Date.now() + duration * 1000).toISOString()
+    await supabase.from("rpc_cache").upsert({
+      cache_key: cacheKey,
+      data: result as any,
+      expires_at: expiresAt,
+      created_at: new Date().toISOString(),
     })
 
-    const request = requestQueue.shift()
-    if (!request) {
-      isProcessingQueue = false
-      return
-    }
-
-    try {
-      const result = await executeRpcCall(request.method, request.params, request.bypassCache)
-      request.resolve(result)
-    } catch (error) {
-      request.reject(error)
-    }
-
-    // Small delay before processing next request
-    await new Promise((resolve) => setTimeout(resolve, 500))
-  } finally {
-    isProcessingQueue = false
-    if (requestQueue.length > 0) {
-      processQueue()
-    }
+    return result
+  } catch (error) {
+    console.error(`Error in withCache for key ${cacheKey}:`, error)
+    throw error
   }
 }
 
-/**
- * Add a request to the queue
- */
-function queueRpcCall(
-  method: string,
-  params: any[] = [],
-  bypassCache = false,
-  priority = 1,
-): Promise<{ success: boolean; data?: any; error?: string; source?: string }> {
-  return new Promise((resolve, reject) => {
-    requestQueue.push({
-      method,
-      params,
-      resolve,
-      reject,
-      bypassCache,
-      priority,
-      timestamp: Date.now(),
-    })
-
-    if (!isProcessingQueue) {
-      processQueue()
-    }
-  })
-}
-
-/**
- * Execute an RPC call with multiple endpoints and rate limiting
- */
-async function executeRpcCall(
-  method: string,
-  params: any[] = [],
-  bypassCache = false,
-): Promise<{ success: boolean; data?: any; error?: string; source?: string }> {
-  // Create a cache key based on the method and params
-  const cacheKey = `${method}:${JSON.stringify(params)}`
-
-  // Check cache first unless bypassing
-  if (!bypassCache && rpcCache[cacheKey] && Date.now() - rpcCache[cacheKey].timestamp < CACHE_TTL) {
-    console.log(`Using cached response for ${method}`)
-    return { success: true, data: rpcCache[cacheKey].data, source: "cache" }
-  }
-
-  // Sort endpoints by weight and availability
-  const availableEndpoints = RPC_ENDPOINTS.filter((endpoint) => {
-    const status = endpointStatus[endpoint.name]
-    return !status.isRateLimited || Date.now() > status.rateLimitResetTime
-  }).sort((a, b) => {
-    // Sort by weight (higher first)
-    return b.weight - a.weight
-  })
-
-  if (availableEndpoints.length === 0) {
-    console.log("All endpoints are rate limited, waiting for the first to become available")
-
-    // Find the endpoint that will become available soonest
-    const nextAvailableEndpoint = RPC_ENDPOINTS.reduce((earliest, current) => {
-      const currentStatus = endpointStatus[current.name]
-      const earliestStatus = endpointStatus[earliest.name]
-
-      return currentStatus.rateLimitResetTime < earliestStatus.rateLimitResetTime ? current : earliest
-    }, RPC_ENDPOINTS[0])
-
-    const waitTime = Math.max(0, endpointStatus[nextAvailableEndpoint.name].rateLimitResetTime - Date.now())
-
-    console.log(`Waiting ${waitTime}ms for ${nextAvailableEndpoint.name} to become available`)
-    await new Promise((resolve) => setTimeout(resolve, waitTime + 100))
-
-    // Try again after waiting
-    return executeRpcCall(method, params, bypassCache)
-  }
-
-  // Try each endpoint until one works
-  for (const endpoint of availableEndpoints) {
-    const status = endpointStatus[endpoint.name]
-
-    // Check if we've exceeded the rate limit for this window
-    const now = Date.now()
-    if (now - status.windowStartTime > WINDOW_SIZE) {
-      // Reset window
-      status.windowStartTime = now
-      status.requestsInWindow = 0
-    }
-
-    if (status.requestsInWindow >= MAX_REQUESTS_PER_WINDOW) {
-      console.log(`Rate limit exceeded for ${endpoint.name}, skipping`)
-      status.isRateLimited = true
-      status.rateLimitResetTime = now + RATE_LIMIT_BACKOFF
-      continue
-    }
-
-    // Respect rate limiting by adding delay between requests
-    const timeSinceLastRequest = now - status.lastRequestTime
-
-    if (timeSinceLastRequest < MIN_REQUEST_INTERVAL) {
-      await new Promise((resolve) => setTimeout(resolve, MIN_REQUEST_INTERVAL - timeSinceLastRequest))
-    }
-
-    try {
-      status.lastRequestTime = Date.now()
-      status.requestsInWindow++
-      console.log(`Calling ${method} on ${endpoint.name}`)
-
-      const response = await axiosInstances[endpoint.name].post("", {
-        jsonrpc: "2.0",
-        id: 1,
-        method,
-        params,
-      })
-
-      if (response.data && response.data.result !== undefined) {
-        // Reset failure count on success
-        status.consecutiveFailures = 0
-        status.backoffTime = 1000
-        status.isRateLimited = false
-
-        // Cache the successful response
-        rpcCache[cacheKey] = {
-          data: response.data.result,
-          timestamp: Date.now(),
-        }
-
-        return { success: true, data: response.data.result, source: endpoint.name }
-      }
-
-      // Check for rate limiting error
-      if (
-        response.data &&
-        response.data.error &&
-        (response.data.error.code === -32429 ||
-          (response.data.error.message &&
-            (response.data.error.message.includes("rate limit") ||
-              response.data.error.message.includes("rate limited"))))
-      ) {
-        console.error(`Rate limited for method ${method} on ${endpoint.name}:`, response.data.error)
-        status.isRateLimited = true
-        status.rateLimitResetTime = Date.now() + RATE_LIMIT_BACKOFF
-
-        // Continue to next endpoint
-        continue
-      }
-
-      // Other error
-      console.error(`Error response for ${method} on ${endpoint.name}:`, response.data)
-      status.consecutiveFailures++
-      status.backoffTime = Math.min(status.backoffTime * 2, MAX_BACKOFF_TIME)
-
-      // Continue to next endpoint
-      continue
-    } catch (error) {
-      console.error(`Error calling ${method} on ${endpoint.name}:`, error)
-
-      // Increment failure count
-      status.consecutiveFailures++
-      status.backoffTime = Math.min(status.backoffTime * 2, MAX_BACKOFF_TIME)
-
-      // Check if this is a rate limit error
-      if (axios.isAxiosError(error) && error.response?.status === 429) {
-        status.isRateLimited = true
-        status.rateLimitResetTime = Date.now() + RATE_LIMIT_BACKOFF
-      }
-
-      // Continue to next endpoint
-      continue
-    }
-  }
-
-  // All endpoints failed
-  return {
-    success: false,
-    error: `All RPC endpoints failed for method ${method}. Please try again later.`,
-  }
-}
-
-/**
- * Makes an RPC call with queuing, caching, and rate limit handling
- */
-export async function rpcCall(method: string, params: any[] = [], bypassCache = false, priority = 1) {
-  return queueRpcCall(method, params, bypassCache, priority)
-}
-
-/**
- * Gets the current slot
- */
+// Get current slot
 export async function getCurrentSlot() {
-  return await rpcCall("getSlot", [], false, 5) // High priority
+  try {
+    const connection = getSolanaConnection()
+    const slot = await connection.getSlot()
+    return { success: true, data: slot }
+  } catch (error) {
+    console.error("Error getting current slot:", error)
+    return { success: false, error: (error as Error).message }
+  }
 }
 
-/**
- * Gets the current epoch info
- */
+// Get epoch info
 export async function getEpochInfo() {
-  return await rpcCall("getEpochInfo", [], false, 5) // High priority
+  try {
+    const connection = getSolanaConnection()
+    const epochInfo = await connection.getEpochInfo()
+    return { success: true, data: epochInfo }
+  } catch (error) {
+    console.error("Error getting epoch info:", error)
+    return { success: false, error: (error as Error).message }
+  }
 }
 
-/**
- * Gets vote accounts (validators)
- */
+// Get vote accounts (validators)
 export async function getVoteAccounts() {
-  return await rpcCall("getVoteAccounts", [], false, 5) // High priority
+  try {
+    const connection = getSolanaConnection()
+    const voteAccounts = await connection.getVoteAccounts()
+    return { success: true, data: voteAccounts }
+  } catch (error) {
+    console.error("Error getting vote accounts:", error)
+    return { success: false, error: (error as Error).message }
+  }
 }
 
-/**
- * Gets cluster nodes
- */
-export async function getClusterNodes() {
-  return await rpcCall("getClusterNodes", [], false, 3)
+// Get validator info
+export async function getValidatorInfo(pubkey: string) {
+  try {
+    const connection = getSolanaConnection()
+    const voteAccounts = await connection.getVoteAccounts()
+    const allValidators = [...voteAccounts.current, ...voteAccounts.delinquent]
+    const validator = allValidators.find((v) => v.votePubkey === pubkey || v.nodePubkey === pubkey)
+    return { success: true, data: validator }
+  } catch (error) {
+    console.error(`Error getting validator info for ${pubkey}:`, error)
+    return { success: false, error: (error as Error).message }
+  }
 }
 
-/**
- * Gets version
- */
-export async function getVersion() {
-  return await rpcCall("getVersion", [], false, 1)
-}
-
-/**
- * Gets transaction count
- */
-export async function getTransactionCount() {
-  return await rpcCall("getTransactionCount", [], false, 2)
-}
-
-/**
- * Gets signatures for address
- */
-export async function getSignaturesForAddress(address: string, limit = 10) {
-  return await rpcCall("getSignaturesForAddress", [address, { limit }], false, 2)
-}
-
-/**
- * Gets block production
- */
-export async function getBlockProduction() {
-  return await rpcCall("getBlockProduction", [], false, 2)
-}
-
-/**
- * Gets latest blockhash
- */
-export async function getLatestBlockhash() {
-  return await rpcCall("getLatestBlockhash", [], false, 4)
-}
-
-/**
- * Gets block time for a slot
- */
-export async function getBlockTime(slot: number) {
-  return await rpcCall("getBlockTime", [slot], false, 3)
-}
-
-/**
- * Gets recent blocks
- */
+// Get recent blocks
 export async function getRecentBlocks(limit = 10) {
   try {
-    const slotResult = await getCurrentSlot()
-    if (!slotResult.success) {
-      throw new Error(`Error in RPC response for getSlot: ${slotResult.error}`)
+    const connection = getSolanaConnection()
+    const slot = await connection.getSlot()
+
+    // Get blocks from slot-limit to slot
+    const blocks = []
+    for (let i = 0; i < limit; i++) {
+      const blockSlot = slot - i
+      if (blockSlot < 0) break
+
+      try {
+        const block = await connection.getBlock(blockSlot, {
+          maxSupportedTransactionVersion: 0,
+          commitment: "confirmed",
+        })
+
+        if (block) {
+          blocks.push({
+            slot: blockSlot,
+            blockTime: block.blockTime,
+            blockHeight: block.blockHeight,
+            transactions: block.transactions?.length || 0,
+            leader: block.rewards?.[0]?.pubkey || null,
+            fees: block.transactions?.reduce((sum, tx) => sum + (tx.meta?.fee || 0), 0) || 0,
+          })
+        }
+      } catch (blockError) {
+        console.error(`Error getting block at slot ${blockSlot}:`, blockError)
+        // Continue with next block
+      }
     }
 
-    const currentSlot = slotResult.data
-    const slots = Array.from({ length: limit }, (_, index) => currentSlot - index)
+    return { success: true, data: blocks }
+  } catch (error) {
+    console.error("Error getting recent blocks:", error)
+    return { success: false, error: (error as Error).message }
+  }
+}
 
-    // Fetch block times for each slot
-    const blockPromises = slots.map(async (slot) => {
-      try {
-        const blockTimeResult = await getBlockTime(slot)
-        if (!blockTimeResult.success) {
-          return {
-            slot,
-            blockTime: Math.floor(Date.now() / 1000) - Math.floor(slot * 0.4),
-            blockHeight: slot,
-            validator: "Unknown",
-            transactions: 0,
-            totalFees: 0,
-          }
-        }
+// Get recent transactions
+export async function getRecentTransactions(limit = 20) {
+  try {
+    const connection = getSolanaConnection()
+    const slot = await connection.getSlot()
 
-        return {
-          slot,
-          blockTime: blockTimeResult.data,
-          blockHeight: slot,
-          validator: "Unknown", // Simplified to avoid extra RPC calls
-          transactions: 0, // Simplified to avoid extra RPC calls
-          totalFees: 0, // Simplified to avoid extra RPC calls
-        }
-      } catch (error) {
-        console.error(`Error fetching block time for slot ${slot}:`, error)
-        return {
-          slot,
-          blockTime: Math.floor(Date.now() / 1000) - Math.floor(slot * 0.4),
-          blockHeight: slot,
-          validator: "Unknown",
-          transactions: 0,
-          totalFees: 0,
-        }
+    // Get a recent block
+    const block = await connection.getBlock(slot - 2, {
+      maxSupportedTransactionVersion: 0,
+      commitment: "confirmed",
+    })
+
+    if (!block || !block.transactions) {
+      throw new Error("No transactions found in recent block")
+    }
+
+    // Get transaction details
+    const transactions = block.transactions.slice(0, limit).map((tx) => {
+      return {
+        signature: tx.transaction.signatures[0],
+        blockTime: block.blockTime,
+        slot: block.slot,
+        fee: tx.meta?.fee || 0,
+        status: tx.meta?.err ? "Failed" : "Success",
+        instructionType: getInstructionType(tx),
       }
     })
 
-    const blocks = await Promise.all(blockPromises)
-    return { success: true, data: blocks }
+    return { success: true, data: transactions }
   } catch (error) {
-    console.error("Error fetching block details:", error)
-    return { success: false, error: `Failed to fetch block details: ${(error as Error).message}` }
+    console.error("Error getting recent transactions:", error)
+    return { success: false, error: (error as Error).message }
   }
 }
 
-/**
- * Gets account info
- */
-export async function getAccountInfo(pubkey: string, encoding = "base64") {
-  return await rpcCall("getAccountInfo", [pubkey, { encoding }], false, 3)
-}
+// Helper to determine instruction type
+function getInstructionType(transaction: any): string {
+  try {
+    // This is a simplified version - in a real implementation, you would
+    // decode the instructions to determine their types
+    const programIds = transaction.transaction.message.instructions.map((ix: any) => {
+      const programIdIndex = ix.programIdIndex
+      return transaction.transaction.message.accountKeys[programIdIndex].toString()
+    })
 
-/**
- * Gets inflation reward
- */
-export async function getInflationReward(addresses: string[], epoch?: number) {
-  const params: any[] = [addresses]
-  if (epoch !== undefined) {
-    params.push({ epoch })
+    if (programIds.includes("11111111111111111111111111111111")) {
+      return "System"
+    } else if (programIds.includes("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")) {
+      return "Token"
+    } else if (programIds.includes("Stake11111111111111111111111111111111111111")) {
+      return "Stake"
+    } else if (programIds.includes("Vote111111111111111111111111111111111111111")) {
+      return "Vote"
+    } else {
+      return "Other"
+    }
+  } catch (error) {
+    return "Unknown"
   }
-  return await rpcCall("getInflationReward", params, false, 2)
 }
 
-/**
- * Gets stake activation
- */
-export async function getStakeActivation(pubkey: string) {
-  return await rpcCall("getStakeActivation", [pubkey], false, 2)
+// Get supply info
+export async function getSupplyInfo() {
+  try {
+    const connection = getSolanaConnection()
+    const supply = await connection.getSupply()
+    return { success: true, data: supply }
+  } catch (error) {
+    console.error("Error getting supply info:", error)
+    return { success: false, error: (error as Error).message }
+  }
 }
 
-/**
- * Gets supply
- */
-export async function getSupply() {
-  return await rpcCall("getSupply", [], false, 3)
+// Calculate current TPS
+export async function getCurrentTPS() {
+  try {
+    const connection = getSolanaConnection()
+
+    // Get performance samples
+    const samples = await connection.getRecentPerformanceSamples(5)
+
+    if (samples.length === 0) {
+      return { success: true, data: 0 }
+    }
+
+    // Calculate average TPS from samples
+    const totalTxs = samples.reduce((sum, sample) => sum + sample.numTransactions, 0)
+    const totalSeconds = samples.reduce((sum, sample) => sum + sample.samplePeriodSecs, 0)
+
+    const tps = totalSeconds > 0 ? totalTxs / totalSeconds : 0
+    return { success: true, data: tps }
+  } catch (error) {
+    console.error("Error calculating TPS:", error)
+    return { success: false, error: (error as Error).message }
+  }
 }
 
-/**
- * Gets token accounts by owner
- */
-export async function getTokenAccountsByOwner(owner: string, mint: string) {
-  return await rpcCall("getTokenAccountsByOwner", [owner, { mint }, { encoding: "jsonParsed" }], false, 3)
+// Store validator data in database
+export async function storeValidatorsInDatabase(validators: any[]) {
+  try {
+    const supabase = createServerSupabaseClient()
+
+    // Insert validators in batches to avoid request size limits
+    const BATCH_SIZE = 100
+    for (let i = 0; i < validators.length; i += BATCH_SIZE) {
+      const batch = validators.slice(i, i + BATCH_SIZE)
+
+      const { error } = await supabase.from("validators").upsert(batch, {
+        onConflict: "pubkey",
+      })
+
+      if (error) {
+        console.error(`Error upserting validators batch ${i}/${validators.length}:`, error)
+      }
+    }
+
+    return { success: true }
+  } catch (error) {
+    console.error("Error storing validators in database:", error)
+    return { success: false, error: (error as Error).message }
+  }
 }
 
-/**
- * Gets program accounts
- */
-export async function getProgramAccounts(programId: string, filters: any[] = []) {
-  return await rpcCall("getProgramAccounts", [programId, { filters, encoding: "jsonParsed" }], false, 3)
+// Get validator data from database
+export async function getValidatorsFromDatabase(
+  options: {
+    limit?: number
+    offset?: number
+    sort?: string
+    order?: "asc" | "desc"
+    filter?: string
+    search?: string
+  } = {},
+) {
+  try {
+    const supabase = createServerSupabaseClient()
+
+    const { limit = 50, offset = 0, sort = "activated_stake", order = "desc", filter = "all", search = "" } = options
+
+    // Build query
+    let query = supabase.from("validators").select("*", { count: "exact" })
+
+    // Apply filters
+    if (filter === "delinquent") {
+      query = query.eq("delinquent", true)
+    } else if (filter === "active") {
+      query = query.eq("delinquent", false)
+    } else if (filter === "top_performance") {
+      query = query.gte("performance_score", 80)
+    } else if (filter === "low_risk") {
+      query = query.lte("risk_score", 30)
+    }
+
+    // Apply search
+    if (search) {
+      query = query.or(`name.ilike.%${search}%,pubkey.ilike.%${search}%`)
+    }
+
+    // Apply sorting
+    if (sort && ["name", "commission", "activated_stake", "performance_score", "risk_score", "apy"].includes(sort)) {
+      query = query.order(sort, { ascending: order === "asc" })
+    }
+
+    // Apply pagination
+    query = query.range(offset, offset + limit - 1)
+
+    // Execute query
+    const { data, error, count } = await query
+
+    if (error) {
+      throw error
+    }
+
+    return { success: true, data, count }
+  } catch (error) {
+    console.error("Error getting validators from database:", error)
+    return { success: false, error: (error as Error).message }
+  }
 }

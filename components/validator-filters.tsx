@@ -1,82 +1,87 @@
 "use client"
 
+import { useState } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import { Slider } from "@/components/ui/slider"
 import { Switch } from "@/components/ui/switch"
-import { Label } from "@/components/ui/label"
-import { Separator } from "@/components/ui/separator"
 import { Button } from "@/components/ui/button"
+import { Label } from "@/components/ui/label"
+import { formatPercentage } from "@/lib/utils"
 
 export function ValidatorFilters() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+
+  // Get initial values from URL params
+  const initialCommissionRange = [
+    Number(searchParams.get("minCommission") || 0),
+    Number(searchParams.get("maxCommission") || 100),
+  ]
+
+  const initialApyRange = [Number(searchParams.get("minApy") || 0), Number(searchParams.get("maxApy") || 10)]
+
+  const initialShowDelinquent = searchParams.get("showDelinquent") !== "false"
+
+  // State for filter values
+  const [commissionRange, setCommissionRange] = useState(initialCommissionRange)
+  const [apyRange, setApyRange] = useState(initialApyRange)
+  const [showDelinquent, setShowDelinquent] = useState(initialShowDelinquent)
+
+  // Apply filters
+  const applyFilters = () => {
+    const params = new URLSearchParams(searchParams)
+
+    params.set("minCommission", commissionRange[0].toString())
+    params.set("maxCommission", commissionRange[1].toString())
+    params.set("minApy", apyRange[0].toString())
+    params.set("maxApy", apyRange[1].toString())
+    params.set("showDelinquent", showDelinquent.toString())
+
+    router.push(`/validators?${params.toString()}`)
+  }
+
+  // Reset filters
+  const resetFilters = () => {
+    setCommissionRange([0, 100])
+    setApyRange([0, 10])
+    setShowDelinquent(true)
+
+    router.push("/validators")
+  }
+
   return (
     <div className="space-y-6">
       <div className="space-y-2">
-        <h3 className="text-sm font-medium">Commission Rate</h3>
-        <div className="space-y-4">
-          <Slider defaultValue={[10]} max={100} step={1} />
-          <div className="flex justify-between text-xs text-muted-foreground">
-            <span>0%</span>
-            <span>Max: 10%</span>
-            <span>100%</span>
-          </div>
+        <div className="flex items-center justify-between">
+          <Label>Commission Range</Label>
+          <span className="text-xs text-muted-foreground">
+            {formatPercentage(commissionRange[0] / 100)} - {formatPercentage(commissionRange[1] / 100)}
+          </span>
         </div>
+        <Slider value={commissionRange} min={0} max={100} step={1} onValueChange={setCommissionRange} />
       </div>
-
-      <Separator />
 
       <div className="space-y-2">
-        <h3 className="text-sm font-medium">Minimum APY</h3>
-        <div className="space-y-4">
-          <Slider defaultValue={[5]} max={10} step={0.1} />
-          <div className="flex justify-between text-xs text-muted-foreground">
-            <span>0%</span>
-            <span>Min: 5%</span>
-            <span>10%</span>
-          </div>
+        <div className="flex items-center justify-between">
+          <Label>APY Range</Label>
+          <span className="text-xs text-muted-foreground">
+            {formatPercentage(apyRange[0] / 100)} - {formatPercentage(apyRange[1] / 100)}
+          </span>
         </div>
+        <Slider value={apyRange} min={0} max={10} step={0.1} onValueChange={setApyRange} />
       </div>
 
-      <Separator />
-
-      <div className="space-y-2">
-        <h3 className="text-sm font-medium">Risk Tolerance</h3>
-        <div className="space-y-4">
-          <Slider defaultValue={[30]} max={100} step={1} />
-          <div className="flex justify-between text-xs text-muted-foreground">
-            <span>Low</span>
-            <span>Medium</span>
-            <span>High</span>
-          </div>
-        </div>
+      <div className="flex items-center space-x-2">
+        <Switch id="show-delinquent" checked={showDelinquent} onCheckedChange={setShowDelinquent} />
+        <Label htmlFor="show-delinquent">Show Delinquent Validators</Label>
       </div>
 
-      <Separator />
-
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <Label htmlFor="hide-delinquent" className="text-sm font-medium">
-            Hide Delinquent
-          </Label>
-          <Switch id="hide-delinquent" defaultChecked />
-        </div>
-
-        <div className="flex items-center justify-between">
-          <Label htmlFor="only-recommended" className="text-sm font-medium">
-            Only Recommended
-          </Label>
-          <Switch id="only-recommended" />
-        </div>
-
-        <div className="flex items-center justify-between">
-          <Label htmlFor="show-superminority" className="text-sm font-medium">
-            Show Superminority
-          </Label>
-          <Switch id="show-superminority" />
-        </div>
+      <div className="flex flex-col gap-2">
+        <Button onClick={applyFilters}>Apply Filters</Button>
+        <Button variant="outline" onClick={resetFilters}>
+          Reset Filters
+        </Button>
       </div>
-
-      <Separator />
-
-      <Button className="w-full">Apply Filters</Button>
     </div>
   )
 }

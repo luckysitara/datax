@@ -2,81 +2,64 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
+
 import { cn } from "@/lib/utils"
-import { Button } from "@/components/ui/button"
-import { BarChart3, Home, Settings, Users, Activity, Layers, Shield, HelpCircle } from "lucide-react"
 
 export function MainNav() {
   const pathname = usePathname()
 
-  // Define all available routes to ensure they exist
-  const routes = [
-    {
-      href: "/",
-      label: "Dashboard",
-      icon: Home,
-      active: pathname === "/",
-    },
-    {
-      href: "/validators",
-      label: "Validators",
-      icon: Users,
-      active: pathname === "/validators" || pathname.startsWith("/validators/"),
-    },
-    {
-      href: "/analytics",
-      label: "Analytics",
-      icon: BarChart3,
-      active: pathname === "/analytics",
-    },
-    {
-      href: "/activity",
-      label: "Activity",
-      icon: Activity,
-      active: pathname === "/activity",
-    },
-    {
-      href: "/stake",
-      label: "Stake",
-      icon: Layers,
-      active: pathname === "/stake",
-    },
-    {
-      href: "/security",
-      label: "Security",
-      icon: Shield,
-      active: pathname === "/security",
-    },
-    {
-      href: "/settings",
-      label: "Settings",
-      icon: Settings,
-      active: pathname === "/settings",
-    },
-    {
-      href: "/help",
-      label: "Help",
-      icon: HelpCircle,
-      active: pathname === "/help",
-    },
-  ]
-
   return (
-    <nav className="flex items-center space-x-4 lg:space-x-6">
-      {routes.map((route) => (
-        <Button key={route.href} variant={route.active ? "default" : "ghost"} size="sm" asChild>
-          <Link
-            href={route.href}
-            className={cn(
-              "flex items-center gap-2",
-              route.active ? "text-primary-foreground" : "text-muted-foreground hover:text-primary",
-            )}
-          >
-            <route.icon className="h-4 w-4" />
-            <span className="hidden md:inline-block">{route.label}</span>
-          </Link>
-        </Button>
-      ))}
-    </nav>
+    <div className="hidden md:flex">
+      <Link href="/" className="mr-6 flex items-center space-x-2">
+        <span className="hidden font-bold sm:inline-block">Solana Validator Analytics</span>
+      </Link>
+      <nav className="flex items-center gap-6 text-sm">
+        <Link
+          href="/"
+          className={cn(
+            "transition-colors hover:text-foreground/80",
+            pathname === "/" ? "text-foreground font-medium" : "text-foreground/60",
+          )}
+        >
+          Dashboard
+        </Link>
+        <Link
+          href="/validators"
+          className={cn(
+            "transition-colors hover:text-foreground/80",
+            pathname?.startsWith("/validators") ? "text-foreground font-medium" : "text-foreground/60",
+          )}
+        >
+          Validators
+        </Link>
+        <Link
+          href="/blocks"
+          className={cn(
+            "transition-colors hover:text-foreground/80",
+            pathname?.startsWith("/blocks") ? "text-foreground font-medium" : "text-foreground/60",
+          )}
+        >
+          Blocks
+        </Link>
+        <Link
+          href="/transactions"
+          className={cn(
+            "transition-colors hover:text-foreground/80",
+            pathname?.startsWith("/transactions") ? "text-foreground font-medium" : "text-foreground/60",
+          )}
+        >
+          Transactions
+        </Link>
+        <Link
+          href="/analytics"
+          className={cn(
+            "transition-colors hover:text-foreground/80",
+            pathname?.startsWith("/analytics") ? "text-foreground font-medium" : "text-foreground/60",
+          )}
+        >
+          Analytics
+        </Link>
+      </nav>
+    </div>
   )
 }

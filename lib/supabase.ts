@@ -1,36 +1,52 @@
 import { createClient } from "@supabase/supabase-js"
-import type { Database } from "@/types/supabase"
+import { cache } from "react"
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
-
-// Create a singleton instance for the browser
-let supabaseInstance: ReturnType<typeof createClient<Database>> | null = null
-
-export const createServerSupabaseClient = () => {
+// Create a single supabase client for the entire server session
+export const createServerSupabaseClient = cache(() => {
   try {
-    return createClient<Database>(
-      process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY!,
-    )
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+    if (!supabaseUrl || !supabaseKey) {
+      throw new Error("Missing Supabase environment variables")
+    }
+
+    return createClient(supabaseUrl, supabaseKey, {
+      auth: {
+        persistSession: false,
+      },
+      global: {
+        headers: {
+          "x-vercel-deployment": process.env.VERCEL_URL || "local",
+        },
+      },
+    })
   } catch (error) {
-    console.error("Error creating server Supabase client:", error)
-    // Return a mock client that won't throw errors but will log them
+    console.error("Error creating Supabase client:", error)
     return createMockClient()
   }
-}
+})
 
-export const getSupabase = () => {
-  if (!supabaseInstance) {
-    try {
-      supabaseInstance = createClient<Database>(supabaseUrl, supabaseAnonKey)
-    } catch (error) {
-      console.error("Error creating client Supabase instance:", error)
-      supabaseInstance = createMockClient()
+// Create a client-side supabase client (for browser usage)
+let clientSupabaseClient: ReturnType<typeof createClient> | null = null
+
+export function createClientSupabaseClient() {
+  if (clientSupabaseClient) return clientSupabaseClient
+
+  try {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+    if (!supabaseUrl || !supabaseAnonKey) {
+      throw new Error("Missing Supabase environment variables")
     }
+
+    clientSupabaseClient = createClient(supabaseUrl, supabaseAnonKey)
+    return clientSupabaseClient
+  } catch (error) {
+    console.error("Error creating client Supabase client:", error)
+    return createMockClient()
   }
-  return supabaseInstance
 }
 
 // Create a mock client for when the real client fails
@@ -122,10 +138,13 @@ export type ValidatorHistory = {
 
 export type RewardsHistory = {
   id?: number
-  validator_pubkey: string
   epoch: number
-  reward?: number
-  apy?: number
+  time: string
+  avg_apy: number
+  min_apy?: number
+  max_apy?: number
+  avg_reward?: number
+  total_rewards?: number
   created_at?: string
 }
 
@@ -154,14 +173,31 @@ export type ModelPrediction = {
   created_at?: string
 }
 
-export type EpochInfo = {
+export type StakeDistribution = {
   id?: number
-  epoch: number
-  slot?: number
-  slots_in_epoch?: number
-  absolute_slot?: number
+  distribution: any[]
+  total_stake: number
+  created_at?: string
+}
+
+export type Block = {
+  id?: number
+  slot: number
+  block_time?: string
   block_height?: number
-  transaction_count?: number
-  avg_reward?: number
+  leader?: string
+  transactions?: number
+  fees?: number
+  created_at?: string
+}
+
+export type Transaction = {
+  id?: number
+  signature: string
+  block_time?: string
+  slot?: number
+  fee?: number
+  status?: string
+  instruction_type?: string
   created_at?: string
 }

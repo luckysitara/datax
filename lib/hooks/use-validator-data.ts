@@ -4,6 +4,7 @@ import useSWR from "swr"
 
 // Define validator data type
 export interface ValidatorData {
+  id?: number
   pubkey: string
   name: string | null
   commission: number
@@ -43,8 +44,7 @@ export function useValidatorData(filter = "all") {
 
   const { data, error, isLoading, mutate } = useSWR<ValidatorData[]>(url, fetcher, {
     revalidateOnFocus: false,
-    dedupingInterval: 10 * 60 * 1000, // 10 minutes
-    errorRetryCount: 3,
+    dedupingInterval: 60000, // 1 minute
   })
 
   return {

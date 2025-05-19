@@ -1,115 +1,145 @@
 import { NextResponse } from "next/server"
-import { createServerSupabaseClient } from "@/lib/supabase"
 import * as solanaRpc from "@/lib/solana-rpc"
 
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
+    const limit = Number(searchParams.get("limit") || "50")
+    const offset = Number(searchParams.get("offset") || "0")
+    const sort = searchParams.get("sort") || "activated_stake"
+    const order = searchParams.get("order") || "desc"
     const filter = searchParams.get("filter") || "all"
-    const limit = Number.parseInt(searchParams.get("limit") || "100")
-    const offset = Number.parseInt(searchParams.get("offset") || "0")
+    const search = searchParams.get("search") || ""
 
     // Try to get validators from database first
-    const supabase = createServerSupabaseClient()
-    let dbValidators = []
-    let dbError = null
+    const dbResult = await solanaRpc.getValidatorsFromDatabase({
+      limit,
+      offset,
+      sort,
+      order: order as "asc" | "desc",
+      filter,
+      search,
+    })
 
-    try {
-      let query = supabase.from("validators").select("*")
-
-      // Apply filters
-      if (filter === "top") {
-        query = query.order("performance_score", { ascending: false }).limit(20)
-      } else if (filter === "recommended") {
-        query = query.eq("delinquent", false).lt("risk_score", 30).order("apy", { ascending: false }).limit(20)
-      } else if (filter === "delinquent") {
-        query = query.eq("delinquent", true)
-      } else {
-        // Default pagination
-        query = query.range(offset, offset + limit - 1)
-      }
-
-      const { data, error } = await query
-
-      if (error) {
-        throw error
-      }
-
-      dbValidators = data || []
-    } catch (error) {
-      console.error("Error fetching validators from database:", error)
-      dbError = error
-    }
-
-    // If we have validators from the database, return them
-    if (dbValidators.length > 0) {
+    // If we have data in the database, return it
+    if (dbResult.success && dbResult.data && dbResult.data.length > 0) {
       return NextResponse.json({
         success: true,
-        data: dbValidators,
+        data: dbResult.data,
+        count: dbResult.count,
         source: "database",
       })
     }
 
-    // If database failed or returned no validators, try to get them from RPC
+    // Fetch from RPC
+    console.log("Fetching validators from RPC...")
     const voteAccountsResult = await solanaRpc.getVoteAccounts()
 
     if (!voteAccountsResult.success) {
-      throw new Error("Failed to fetch vote accounts from RPC")
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Failed to fetch validators from RPC",
+          error: voteAccountsResult.error,
+        },
+        { status: 500 },
+      )
     }
 
     const voteAccounts = voteAccountsResult.data
+    const allValidators = [...voteAccounts.current, ...voteAccounts.delinquent]
 
     // Transform vote accounts into validator format
-    const validators = [
-      ...voteAccounts.current.map((v: any) => ({
-        pubkey: v.votePubkey,
-        name: null,
-        commission: v.commission,
-        activated_stake: v.activatedStake,
-        last_vote: v.lastVote,
-        delinquent: false,
-        performance_score: Math.floor(Math.random() * 20) + 80, // 80-100 score for active validators
-        risk_score: Math.floor(Math.random() * 30) + 10, // 10-40 risk for active validators
-        apy: 6.5 - (v.commission / 100) * 6.5, // APY adjusted for commission
-      })),
-      ...voteAccounts.delinquent.map((v: any) => ({
-        pubkey: v.votePubkey,
-        name: null,
-        commission: v.commission,
-        activated_stake: v.activatedStake,
-        last_vote: v.lastVote,
-        delinquent: true,
-        performance_score: Math.floor(Math.random() * 30) + 40, // 40-70 score for delinquent validators
-        risk_score: Math.floor(Math.random() * 30) + 60, // 60-90 risk for delinquent validators
-        apy: (6.5 - (v.commission / 100) * 6.5) * 0.5, // Reduced APY for delinquent validators
-      })),
-    ]
+    const validators = allValidators.map((validator) => {
+      const isDelinquent = voteAccounts.delinquent.some((v) => v.votePubkey === validator.votePubkey)
 
-    // Apply filters
+      // Calculate performance score based on real metrics
+      let performanceScore = 80 // Base score
+
+      if (isDelinquent) {
+        performanceScore = 50 // Lower score for delinquent validators
+      }
+
+      // Calculate risk score based on real metrics
+      let riskScore = 25 // Base risk
+
+      if (isDelinquent) {
+        riskScore = 75 // High risk for delinquent validators
+      }
+
+      // Calculate APY based on commission
+      // Base APY for Solana is around 6-7%
+      const baseAPY = 6.5
+      const commissionImpact = (validator.commission / 100) * baseAPY
+      const apy = baseAPY - commissionImpact
+
+      return {
+        pubkey: validator.votePubkey,
+        name: `Validator ${validator.votePubkey.substring(0, 8)}`,
+        commission: validator.commission,
+        activated_stake: validator.activatedStake,
+        last_vote: validator.lastVote,
+        delinquent: isDelinquent,
+        performance_score: performanceScore,
+        risk_score: riskScore,
+        apy,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }
+    })
+
+    // Store validators in database for future use
+    solanaRpc.storeValidatorsInDatabase(validators).catch((error) => {
+      console.error("Error storing validators in database:", error)
+    })
+
+    // Apply filters to RPC data
     let filteredValidators = validators
 
-    if (filter === "top") {
-      filteredValidators = validators
-        .filter((v) => !v.delinquent)
-        .sort((a, b) => b.performance_score - a.performance_score)
-        .slice(0, 20)
-    } else if (filter === "recommended") {
-      filteredValidators = validators
-        .filter((v) => !v.delinquent && v.risk_score < 30)
-        .sort((a, b) => b.apy - a.apy)
-        .slice(0, 20)
-    } else if (filter === "delinquent") {
+    if (filter === "delinquent") {
       filteredValidators = validators.filter((v) => v.delinquent)
-    } else {
-      // Default pagination
-      filteredValidators = validators.slice(offset, offset + limit)
+    } else if (filter === "active") {
+      filteredValidators = validators.filter((v) => !v.delinquent)
+    } else if (filter === "top_performance") {
+      filteredValidators = validators.filter((v) => v.performance_score >= 80)
+    } else if (filter === "low_risk") {
+      filteredValidators = validators.filter((v) => v.risk_score <= 30)
     }
+
+    // Apply search to RPC data
+    if (search) {
+      const searchLower = search.toLowerCase()
+      filteredValidators = filteredValidators.filter(
+        (v) => v.name.toLowerCase().includes(searchLower) || v.pubkey.toLowerCase().includes(searchLower),
+      )
+    }
+
+    // Apply sorting to RPC data
+    if (sort) {
+      filteredValidators.sort((a, b) => {
+        const aValue = a[sort as keyof typeof a]
+        const bValue = b[sort as keyof typeof b]
+
+        if (typeof aValue === "number" && typeof bValue === "number") {
+          return order === "asc" ? aValue - bValue : bValue - aValue
+        }
+
+        if (typeof aValue === "string" && typeof bValue === "string") {
+          return order === "asc" ? aValue.localeCompare(bValue) : bValue.localeCompare(aValue)
+        }
+
+        return 0
+      })
+    }
+
+    // Apply pagination to RPC data
+    const paginatedValidators = filteredValidators.slice(offset, offset + limit)
 
     return NextResponse.json({
       success: true,
-      data: filteredValidators,
+      data: paginatedValidators,
+      count: filteredValidators.length,
       source: "rpc",
-      dbError: dbError ? (dbError as Error).message : null,
     })
   } catch (error) {
     console.error("Error fetching validators:", error)
