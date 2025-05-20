@@ -1,7 +1,5 @@
 # datax
 ```markdown project="Solana Validator Dashboard" file="README.md"
-...
-```
 
 2. Install dependencies:
 
