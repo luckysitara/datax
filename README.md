@@ -1,7 +1,108 @@
-# datax
-```markdown project="Solana Validator Dashboard" file="README.md"
+# datax Solana Validator Dashboard
 
-2. Install dependencies:
+### Dashboard
+
+The main dashboard provides an overview of the Solana network and validator statistics:
+
+- Network statistics (TPS, active validators, total stake)
+- Top validators by performance
+- Recent blocks and transactions
+- Stake distribution visualization
+
+
+### Validators
+
+The validators page allows you to:
+
+- Browse all validators with filtering and sorting options
+- View detailed information about each validator
+- Analyze performance metrics and risk factors
+- Track historical performance and rewards
+
+
+### Analytics
+
+The analytics section provides:
+
+- APY trends over time
+- Stake distribution analysis
+- Performance comparisons
+- Risk assessment visualizations
+
+
+### Data Collection
+
+To populate the dashboard with data:
+
+1. Use the "Fetch Validators" button to collect current validator data
+2. Set up a cron job to regularly update the data:
+
+
+```shellscript
+# Example cron job to update data every hour
+0 * * * * curl -X POST https://your-deployment-url.vercel.app/api/cron/collect-data
+```
+
+## API Endpoints
+
+### Validators
+
+- `GET /api/validators` - Get all validators with pagination and filtering
+- `GET /api/validators/[id]` - Get details for a specific validator
+- `GET /api/validators/[id]/history` - Get historical data for a validator
+- `GET /api/validators/[id]/rewards` - Get rewards history for a validator
+- `GET /api/validators/[id]/predictions` - Get performance predictions for a validator
+- `GET /api/validators/[id]/risk` - Get risk assessment for a validator
+- `POST /api/validators/fetch` - Trigger validator data collection
+- `POST /api/validators/fetch-all` - Fetch all validator data (comprehensive)
+
+
+### Analytics
+
+- `GET /api/analytics/rewards` - Get network-wide reward statistics
+- `GET /api/analytics/stake` - Get stake distribution data
+
+
+### Network
+
+- `GET /api/network-stats` - Get current network statistics
+- `GET /api/blocks` - Get recent blocks
+- `GET /api/transactions` - Get recent transactions
+
+
+### Machine Learning
+
+- `POST /api/ml/train` - Train prediction models
+- `GET /api/model/predict/[id]` - Get predictions for a validator
+
+
+## Project Structure
+
+```plaintext
+solana-validator-dashboard/
+├── app/                    # Next.js App Router
+│   ├── api/                # API routes
+│   ├── dashboard/          # Dashboard page
+│   ├── validators/         # Validators pages
+│   ├── analytics/          # Analytics pages
+│   └── ...
+├── components/             # React components
+│   ├── ui/                 # UI components (shadcn/ui)
+│   ├── validator-table.tsx # Validator table component
+│   └── ...
+├── lib/                    # Utility libraries
+│   ├── supabase.ts         # Supabase client
+│   ├── solana-rpc.ts       # Solana RPC client
+│   └── ...
+├── utils/                  # Utility functions
+├── public/                 # Static assets
+├── .env.local              # Environment variables
+├── next.config.js          # Next.js configuration
+└── ...
+```
+
+
+ Install dependencies:
 
 
 ```shellscript
@@ -138,110 +239,16 @@ npm run dev
 
 6. Open [http://localhost:3000](http://localhost:3000) in your browser.
 
+## Contributing
 
-## Usage
+Contributions are welcome! Please feel free to submit a Pull Request.
 
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
-### Dashboard
-
-The main dashboard provides an overview of the Solana network and validator statistics:
-
-- Network statistics (TPS, active validators, total stake)
-- Top validators by performance
-- Recent blocks and transactions
-- Stake distribution visualization
-
-
-### Validators
-
-The validators page allows you to:
-
-- Browse all validators with filtering and sorting options
-- View detailed information about each validator
-- Analyze performance metrics and risk factors
-- Track historical performance and rewards
-
-
-### Analytics
-
-The analytics section provides:
-
-- APY trends over time
-- Stake distribution analysis
-- Performance comparisons
-- Risk assessment visualizations
-
-
-### Data Collection
-
-To populate the dashboard with data:
-
-1. Use the "Fetch Validators" button to collect current validator data
-2. Set up a cron job to regularly update the data:
-
-
-```shellscript
-# Example cron job to update data every hour
-0 * * * * curl -X POST https://your-deployment-url.vercel.app/api/cron/collect-data
-```
-
-## API Endpoints
-
-### Validators
-
-- `GET /api/validators` - Get all validators with pagination and filtering
-- `GET /api/validators/[id]` - Get details for a specific validator
-- `GET /api/validators/[id]/history` - Get historical data for a validator
-- `GET /api/validators/[id]/rewards` - Get rewards history for a validator
-- `GET /api/validators/[id]/predictions` - Get performance predictions for a validator
-- `GET /api/validators/[id]/risk` - Get risk assessment for a validator
-- `POST /api/validators/fetch` - Trigger validator data collection
-- `POST /api/validators/fetch-all` - Fetch all validator data (comprehensive)
-
-
-### Analytics
-
-- `GET /api/analytics/rewards` - Get network-wide reward statistics
-- `GET /api/analytics/stake` - Get stake distribution data
-
-
-### Network
-
-- `GET /api/network-stats` - Get current network statistics
-- `GET /api/blocks` - Get recent blocks
-- `GET /api/transactions` - Get recent transactions
-
-
-### Machine Learning
-
-- `POST /api/ml/train` - Train prediction models
-- `GET /api/model/predict/[id]` - Get predictions for a validator
-
-
-## Project Structure
-
-```plaintext
-solana-validator-dashboard/
-├── app/                    # Next.js App Router
-│   ├── api/                # API routes
-│   ├── dashboard/          # Dashboard page
-│   ├── validators/         # Validators pages
-│   ├── analytics/          # Analytics pages
-│   └── ...
-├── components/             # React components
-│   ├── ui/                 # UI components (shadcn/ui)
-│   ├── validator-table.tsx # Validator table component
-│   └── ...
-├── lib/                    # Utility libraries
-│   ├── supabase.ts         # Supabase client
-│   ├── solana-rpc.ts       # Solana RPC client
-│   └── ...
-├── utils/                  # Utility functions
-├── public/                 # Static assets
-├── .env.local              # Environment variables
-├── next.config.js          # Next.js configuration
-└── ...
-```
 
 ## Deployment
 
@@ -263,17 +270,6 @@ And start the production server with:
 ```shellscript
 npm start
 ```
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
 
 ## License
 
