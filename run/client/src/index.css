@@ -1,0 +1,118 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Orbitron:wght@400;500;700;900&family=Rajdhani:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Cyberpunk Palette - Dark Mode Default */
+  --background: 240 10% 4%;
+  --foreground: 180 100% 90%; /* Light Cyan Text */
+  
+  --primary: 180 100% 50%; /* Neon Cyan */
+  --primary-foreground: 240 10% 4%;
+  
+  --secondary: 270 50% 15%; /* Deep Purple Backgrounds */
+  --secondary-foreground: 180 100% 90%;
+  
+  --muted: 240 10% 10%;
+  --muted-foreground: 240 20% 60%;
+  
+  --accent: 300 100% 50%; /* Neon Pink/Magenta */
+  --accent-foreground: 240 10% 4%;
+  
+  --destructive: 0 100% 50%; /* Neon Red */
+  --destructive-foreground: 240 10% 4%;
+  
+  --border: 180 50% 20%; /* Subtle cyan border */
+  --input: 240 10% 10%;
+  --ring: 180 100% 50%;
+  
+  --radius: 0.25rem;
+
+  /* Custom Fonts */
+  --font-display: 'Orbitron', sans-serif;
+  --font-body: 'Rajdhani', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+  
+  /* Status Colors */
+  --severity-critical: 0 100% 50%;
+  --severity-high: 30 100% 50%;
+  --severity-medium: 60 100% 50%;
+  --severity-low: 210 100% 50%;
+}
+
+@layer base {
+  body {
+    @apply bg-background text-foreground antialiased selection:bg-primary selection:text-primary-foreground;
+    font-family: var(--font-body);
+    background-image: 
+      linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%),
+      linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+    background-size: 100% 2px, 3px 100%;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-display);
+    @apply tracking-wider uppercase;
+    text-shadow: 0 0 10px rgba(0, 240, 255, 0.3);
+  }
+
+  code, pre {
+    font-family: var(--font-mono);
+  }
+}
+
+@layer components {
+  .cyber-card {
+    @apply bg-card border border-border/50 relative overflow-hidden;
+    backdrop-filter: blur(10px);
+  }
+  
+  .cyber-card::before {
+    content: '';
+    @apply absolute top-0 left-0 w-2 h-2 border-t-2 border-l-2 border-primary;
+  }
+  
+  .cyber-card::after {
+    content: '';
+    @apply absolute bottom-0 right-0 w-2 h-2 border-b-2 border-r-2 border-primary;
+  }
+
+  .cyber-input {
+    @apply bg-black/50 border border-border/50 focus:border-primary focus:ring-1 focus:ring-primary/50 transition-all duration-300 font-mono;
+  }
+
+  .neon-text {
+    text-shadow: 0 0 5px currentColor;
+  }
+
+  .scanline {
+    width: 100%;
+    height: 100px;
+    z-index: 10;
+    background: linear-gradient(0deg, rgba(0,0,0,0) 0%, rgba(0, 255, 255, 0.1) 50%, rgba(0,0,0,0) 100%);
+    opacity: 0.1;
+    position: absolute;
+    bottom: 100%;
+    animation: scanline 10s linear infinite;
+    pointer-events: none;
+  }
+}
+
+@keyframes scanline {
+  0% { bottom: 100%; }
+  100% { bottom: -100px; }
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  @apply bg-background;
+}
+::-webkit-scrollbar-thumb {
+  @apply bg-primary/30 hover:bg-primary/60 rounded-sm;
+}
